@@ -1,0 +1,173 @@
+1. Cấu hình Spring Boot Actuator
+pom.xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-actuator</artifactId>
+</dependency>
+build.gradle
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+}
+mvn --version   
+gradle --version 
+
+2. Kích hoạt JMX
+application.yml
+
+spring:
+  jmx:
+    enabled: true
+
+3. Mở các endpoint Actuator cần thiết
+application.yml
+management:
+  endpoints:
+    enabled-by-default: false
+    web:
+      exposure:
+        include: "health,info,metrics,env"
+    jmx:
+      exposure:
+        include: "health,info,metrics,env"
+4. Cấu hình health-interval để tối ưu tần suất kiểm tra
+com:
+  instana:
+    plugin:
+      springboot:
+        health-interval: 30
+
+5. Cấu hình bảo mật (nếu cần)
+management:
+  endpoint:
+    env:
+      show-values: NEVER(ALWAYS)  # Giá trị mặc định, không hiển thị dữ liệu nhạy cảm
+6. Đặt tên ứng dụng Spring Boot
+spring:
+  application:
+    name: my-spring-app
+
+
+monitoring nginx
+1. Bật tính năng giám sát Nginx trong Instana Agent
+com.instana.plugin.nginx:
+  enabled: true
+sudo systemctl restart instana-agent
+2. Bật module stub_status
+server {
+    listen 80;
+    location /nginx_status {
+        stub_status;
+        allow 127.0.0.1;  # Chỉ cho phép localhost truy cập
+        deny all;
+    }
+}
+sudo systemctl reload nginx
+
+3. Cấu hình Instana để lấy dữ liệu từ stub_status
+com.instana.plugin.nginx:
+  enabled: true
+  status-url: http://127.0.0.1/nginx_status
+4. Tạo alert khi Nginx có vấn đề
+- name: High Active Connections Alert
+  conditions:
+    - metric: "nginx.active_connections"
+      threshold: 1000
+      operator: "greater_than"
+monitoring apache httpd
+1. Bật tính năng giám sát HTTPD trong Instana Agent
+com.instana.plugin.apache-httpd:
+  enabled: true
+  status-url: http://127.0.0.1/server-status?auto
+sudo systemctl restart instana-agent
+
+2. Sử dụng mod_status để thu thập metric HTTPD
+Bật module mod_status
+LoadModule status_module modules/mod_status.so
+3. Cấu hình mod_status
+/etc/httpd/conf/httpd.conf
+<Location "/server-status">
+    SetHandler server-status
+    Require local
+</Location>
+sudo systemctl restart httpd    
+curl http://127.0.0.1/server-status?auto
+4. Cấu hình Instana để lấy dữ liệu từ mod_status
+com.instana.plugin.apache-httpd:
+  enabled: true
+  status-url: http://127.0.0.1/server-status?auto
+
+sudo systemctl restart instana-agent
+5. Tạo alert khi HTTPD có vấn đề
+- name: High Apache Workers Alert
+  conditions:
+    - metric: "apache.httpd.busy_workers"
+      threshold: 100
+      operator: "greater_than"
+
+monitoring db rac
+1. Cấp quyền truy cập cho Instana
+CREATE ROLE INSTANAROLE;
+
+GRANT SELECT ON V_$SESSION TO INSTANAROLE;
+GRANT SELECT ON V_$ACTIVE_SESSION_HISTORY TO INSTANAROLE;
+GRANT SELECT ON V_$SYSSTAT TO INSTANAROLE;
+GRANT SELECT ON DBA_HIST_SNAPSHOT TO INSTANAROLE;
+GRANT SELECT ON DBA_HIST_SQLTEXT TO INSTANAROLE;
+GRANT SELECT ON DBA_USERS TO INSTANAROLE;
+GRANT SELECT ON DBA_TABLESPACE_USAGE_METRICS TO INSTANAROLE;
+-- Cấp quyền cho các bảng khác theo danh sách cần thiết
+
+GRANT INSTANAROLE TO instana_user;
+
+2. Cấu hình Instana Agent
+
+com.instana.plugin.oracledb:
+  remote:
+    - host: 'node1_rac'
+      port: '1521'
+      user: 'instana_user'
+      password: 'your_password'
+      databaseServiceName: 'your_rac_service'
+      availabilityZone: 'OracleRAC'
+      poll_rate: 10
+    - host: 'node2_rac'
+      port: '1521'
+      user: 'instana_user'
+      password: 'your_password'
+      databaseServiceName: 'your_rac_service'
+      availabilityZone: 'OracleRAC'
+      poll_rate: 10
+3. Tùy chỉnh Custom Polling
+
+customPolling:
+  - poll_rate: 30
+    metrics:
+      - TOP_CPU_CONSUMING_SESSION_LAST_10_MIN
+      - ACTIVE_SESSIONS_RUNNING_MORE_THAN_600_SECS
+      - LIBRARY_CACHE_HIT_RATIO
+      - CURRENT_BLOCKING_SESSIONS
+  - poll_rate: 60
+    metrics:
+      - TOP_ELAPSED_TIME_QUERIES
+      - TOP_TEN_CPU_CONSUMING_SESSION
+      - SQL_ID_CONSUMING_MORE_CPU
+      - USER_FOREGROUND_SESSIONS
+  - poll_rate: 3600
+    metrics:
+      - TOP_10_SQL_HIGH_IO_LAST_24_HR
+      - TOP_CPU_QUERIES_LAST_24_HRS
+4. Khởi động lại Instana Agent
+systemctl restart instana-agent
+
+monitoring kafka
+1. Cấu hình Monitoring Kafka trong Instana
+com.instana.plugin.kafka:
+  jmxPort: '1099'  # Cổng mặc định của JMX
+  jmxUsername: 'yourJmxUser'
+  jmxPassword: 'yourJmxPassword'
+  collectLagData: true  # Bật thu thập dữ liệu Consumer Lag
+  sslTrustStore: '/path/to/truststore.jks'
+  sslTrustStorePassword: 'password'
+  sslKeyStore: '/path/to/keystore.jks'
+  sslKeyStorePassword: 'password'
+  topicsRegex: '.*'  # Lọc topic theo regex (mặc định thu thập 400 topics đầu tiên)
