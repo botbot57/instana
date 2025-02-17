@@ -1,0 +1,43 @@
+---
+- name: Deploy RPM and Run Script
+  hosts: all
+  become: yes 
+  vars:
+    ZONE: "{{ group_names[0] }}"
+    INSTANA_IP: "192.168.0.140"
+    INSTANA_PORT: "1444"
+    INSTANA_KEY: "0r0UKfpDRESENTVV9QpYZg"
+    INSTANA_HOST: "instana-backend.example.com"
+  tasks:
+    - name: Copy RPM file to target machine
+      copy:
+        src: /root/instana-agent-static-j9-el7-20250212-0745.x86_64.rpm 
+        dest: /tmp/package-instana-agent.rpm
+
+    - name: Install RPM package
+      command: rpm -ivh /tmp/package-instana-agent.rpm
+
+    - name: Copy script file to target machine
+      copy:
+        src: /root/instana_setup.sh.j2
+        dest: /tmp/instana_setup.sh
+        mode: '0755'
+
+    - name: Debug group_names
+      debug:
+        var: group_names
+
+
+    - name: Configure Instana Agent
+      template:
+        src: /root/instana_setup.sh.j2
+        dest: /tmp/instana_setup.sh
+        mode: '0755'
+
+    - name: Run Instana setup script
+      command: /tmp/instana_setup.sh
+#      environment:
+#        ZONE: "{{ group_names[0] }}"
+#        INSTANA_IP: "192.168.0.140"
+#        INSTANA_PORT: "1444"
+#        INSTANA_KEY: "0r0UKfpDRESENTVV9QpYZg"

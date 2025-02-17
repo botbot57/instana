@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# setup
+#path_instana_agent="/root/"
+zone="{{ ZONE }}"
+instana_ip="{{ INSTANA_IP }}"
+instana_host="{{ INSTANA_HOST }}"
+instana_port="{{ INSTANA_PORT }}"
+instana_key="{{ INSTANA_KEY }}"
+#add env
+#echo "export path_instana_agent=\"$path_instana_agent\"" >> /root/.bash_profile
+echo "export zone=\"$zone\"" >> /root/.bash_profile
+echo "export instana_ip=\"$instana_ip\"" >> /root/.bash_profile
+echo "export instana_host=\"$instana_host\"" >> /root/.bash_profile
+echo "export instana_port=\"$instana_port\"" >> /root/.bash_profile
+echo "export instana_key=\"$instana_key\"" >> /root/.bash_profile
+# add host
+#echo "Add host instana backend"
+#echo -e "#instana\n$instana_ip $instana_host" >> /etc/hosts
+#echo "OK!"
+source /root/.bash_profile
+# install instana agent
+#echo "Install static agent instana"
+#rpm -ivh $path_instana_agent/instana-agent-static*
+#echo "OK!"
+
+# config agent send instana backend
+echo "Configure instana agent"
+sed -i "s/${env:INSTANA_HOST}/$instana_ip/g" /opt/instana/agent/etc/instana/com.instana.agent.main.sender.Backend.cfg
+sed -i "s/${env:INSTANA_PORT}/$instana_port/g" /opt/instana/agent/etc/instana/com.instana.agent.main.sender.Backend.cfg
+sed -i "s/${env:INSTANA_KEY}/$instana_key/g" /opt/instana/agent/etc/instana/com.instana.agent.main.sender.Backend.cfg
+
+sed -i "s/\#com.instana.plugin.generic.hardware:/com.instana.plugin.generic.hardware:/g" /opt/instana/agent/etc/instana/configuration.yaml
+sed -i "126c\  enabled: true # disabled by default" /opt/instana/agent/etc/instana/configuration.yaml
+sed -i "127c\  availability-zone: '$zone'" /opt/instana/agent/etc/instana/configuration.yaml
+
+echo "Done!"
