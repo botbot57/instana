@@ -46,6 +46,8 @@ spring:
   application:
     name: my-spring-app
 
+7. Tích hợp Instana Java Agent
+java -javaagent:/path/to/instana-agent.jar -jar my-spring-app.jar
 
 monitoring nginx
 1. Bật tính năng giám sát Nginx trong Instana Agent
