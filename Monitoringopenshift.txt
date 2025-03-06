@@ -1,0 +1,103 @@
+Nếu bạn đã cài đặt Instana trên một máy ảo (VM) theo **Standard Edition**, bạn vẫn có thể sử dụng nó để giám sát OpenShift. Tuy nhiên, quy trình sẽ khác một chút so với việc sử dụng Instana SaaS (Software-as-a-Service). Dưới đây là hướng dẫn chi tiết:
+
+---
+
+### 1. Chuẩn bị
+- **Instana Server**: Đảm bảo Instana Server đã được cài đặt và chạy trên VM của bạn.
+- **OpenShift Cluster**: Bạn cần có quyền quản trị hoặc quyền phù hợp để cài đặt và cấu hình các thành phần trong OpenShift.
+- **Agent Key**: Lấy **Agent Key** từ Instana Server. Bạn có thể tìm thấy nó trong giao diện quản trị của Instana.
+
+---
+
+### 2. Cài đặt Instana Agent trên OpenShift
+Instana Agent sẽ được cài đặt trên OpenShift để thu thập dữ liệu và gửi về Instana Server trên VM của bạn.
+
+#### a. Tạo Namespace cho Instana Agent
+Tạo một namespace riêng cho Instana Agent:
+
+```bash
+oc create namespace instana-agent
+```
+
+#### b. Tạo Secret chứa Agent Key
+Tạo một Kubernetes Secret để lưu trữ **Agent Key** của Instana:
+
+```bash
+kubectl create secret generic instana-agent-key --from-literal=key=<YOUR_INSTANA_AGENT_KEY> --namespace=instana-agent
+```
+
+Thay thế `<YOUR_INSTANA_AGENT_KEY>` bằng khóa Agent của bạn từ Instana Server.
+
+#### c. Cài đặt Instana Agent bằng Helm
+Sử dụng Helm để cài đặt Instana Agent. Trước tiên, thêm repository Helm của Instana (nếu chưa có):
+
+```bash
+helm repo add instana https://helm.instana.io/artifactory/rel-helm-customer-virtual
+helm repo update
+```
+
+Sau đó, cài đặt Instana Agent:
+
+```bash
+helm upgrade --install instana-agent \
+  --namespace instana-agent \
+  --set agent.key=<YOUR_INSTANA_AGENT_KEY> \
+  --set agent.endpoint.host=<INSTANA_SERVER_HOST> \
+  --set agent.endpoint.port=<INSTANA_SERVER_PORT> \
+  --set agent.zone=<YOUR_ZONE> \
+  --set agent.cluster=<YOUR_CLUSTER_NAME> \
+  instana/instana-agent
+```
+
+- Thay thế `<YOUR_INSTANA_AGENT_KEY>` bằng khóa Agent của bạn.
+- Thay thế `<INSTANA_SERVER_HOST>` và `<INSTANA_SERVER_PORT>` bằng địa chỉ IP/hostname và cổng của Instana Server trên VM của bạn.
+- Thay thế `<YOUR_ZONE>` và `<YOUR_CLUSTER_NAME>` bằng thông tin phù hợp của bạn.
+
+#### d. Kiểm tra cài đặt
+Kiểm tra xem Instana Agent đã được triển khai thành công chưa:
+
+```bash
+oc get pods -n instana-agent
+```
+
+Bạn sẽ thấy các pod của Instana Agent đang chạy.
+
+---
+
+### 3. Cấu hình Instana Server
+- Đảm bảo Instana Server trên VM của bạn có thể kết nối với OpenShift Cluster.
+- Kiểm tra xem dữ liệu từ OpenShift đã được gửi về Instana Server chưa bằng cách truy cập giao diện web của Instana.
+
+---
+
+### 4. Giám sát OpenShift trên Instana
+- Truy cập Instana Dashboard trên VM của bạn.
+- Tìm kiếm và chọn OpenShift Cluster của bạn trong danh sách các tài nguyên được giám sát.
+- Bạn sẽ thấy các thông tin như:
+  - Tình trạng các node, pod, và container.
+  - Hiệu suất ứng dụng.
+  - Các sự kiện và cảnh báo.
+
+---
+
+### 5. Cấu hình bổ sung (nếu cần)
+- **Custom Metrics**: Cấu hình các metrics cụ thể cần giám sát.
+- **Alerts**: Thiết lập cảnh báo trong Instana để nhận thông báo khi có sự cố.
+- **Resource Limits**: Đặt giới hạn tài nguyên cho Instana Agent để đảm bảo hiệu suất của cluster.
+
+---
+
+### 6. Gỡ cài đặt (nếu cần)
+Nếu bạn muốn gỡ cài đặt Instana Agent, sử dụng lệnh sau:
+
+```bash
+helm uninstall instana-agent --namespace instana-agent
+```
+
+---
+
+### Lưu ý
+- Đảm bảo OpenShift Cluster của bạn có thể kết nối đến Instana Server trên VM.
+- Kiểm tra các yêu cầu về tài nguyên (CPU, Memory) để đảm bảo hiệu suất của cluster.
+
+Nếu bạn gặp bất kỳ vấn đề nào, hãy tham khảo [tài liệu chính thức của Instana](https://www.instana.com/docs/) hoặc liên hệ với hỗ trợ kỹ thuật của họ.
