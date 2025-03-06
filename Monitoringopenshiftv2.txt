@@ -1,0 +1,82 @@
+Đúng rồi! Nếu bạn đang làm việc trong môi trường **air-gapped** (không có kết nối Internet trực tiếp), bạn sẽ cần sử dụng một **helper node** (hoặc **jump host/bastion host**) để thực hiện các bước cài đặt. Helper node là một máy tính hoặc server có thể kết nối đến cả:
+
+1. **OpenShift Cluster**: Để triển khai Instana Agent.
+2. **Internal Registry**: Để lấy image của Instana Agent.
+3. **Instana Server**: Để cấu hình và gửi dữ liệu giám sát.
+
+---
+
+### **Tại sao cần helper node?**
+- Trong môi trường air-gapped, các máy tính bên trong mạng nội bộ không thể truy cập Internet để tải image hoặc cài đặt các công cụ như Helm.
+- Helper node thường được đặt trong một vùng mạng đặc biệt, có thể kết nối ra ngoài (nếu cần) hoặc có quyền truy cập đến các tài nguyên nội bộ như internal registry và OpenShift Cluster.
+
+---
+
+### **Cách thực hiện trên helper node**
+
+#### 1. **Chuẩn bị helper node**
+- Đảm bảo helper node đã cài đặt các công cụ cần thiết:
+  - **OpenShift CLI (`oc`)**: Để kết nối và quản lý OpenShift Cluster.
+  - **Helm CLI**: Để triển khai Instana Agent từ Helm chart.
+  - **Docker/Podman**: Để tải và đẩy image vào internal registry (nếu cần).
+- Đảm bảo helper node có quyền truy cập đến:
+  - **Internal Registry**: Nơi lưu trữ image của Instana Agent.
+  - **OpenShift Cluster**: Để triển khai Instana Agent.
+  - **Instana Server**: Để cấu hình Agent Key và endpoint.
+
+#### 2. **Tải và đẩy Instana Agent Image vào Internal Registry**
+Nếu bạn chưa có image của Instana Agent trong internal registry, hãy thực hiện các bước sau trên helper node:
+
+- **Tải image từ Internet** (trên một máy có kết nối Internet):
+  ```bash
+  docker pull icr.io/instana/agent:latest
+  docker save icr.io/instana/agent:latest -o instana-agent.tar
+  ```
+- **Chuyển image vào môi trường air-gapped** (ví dụ: qua USB hoặc mạng nội bộ).
+- **Tải image vào Docker và đẩy vào internal registry** (trên helper node):
+  ```bash
+  docker load -i instana-agent.tar
+  docker tag icr.io/instana/agent:latest <INTERNAL_REGISTRY_URL>/instana/agent:latest
+  docker push <INTERNAL_REGISTRY_URL>/instana/agent:latest
+  ```
+
+#### 3. **Cài đặt Instana Agent trên OpenShift**
+Thực hiện các bước sau trên helper node:
+
+- **Kết nối đến OpenShift Cluster**:
+  ```bash
+  oc login -u <USERNAME> -p <PASSWORD> <OPENSHIFT_API_URL>
+  ```
+- **Tạo namespace và secret**:
+  ```bash
+  oc create namespace instana-agent
+  kubectl create secret generic instana-agent-key --from-literal=key=<YOUR_INSTANA_AGENT_KEY> --namespace=instana-agent
+  ```
+- **Cài đặt Instana Agent bằng Helm**:
+  ```bash
+  helm upgrade --install instana-agent \
+    --namespace instana-agent \
+    --set agent.key=<YOUR_INSTANA_AGENT_KEY> \
+    --set agent.endpoint.host=<INSTANA_SERVER_HOST> \
+    --set agent.endpoint.port=<INSTANA_SERVER_PORT> \
+    --set image.repository=<INTERNAL_REGISTRY_URL>/instana/agent \
+    --set image.tag=latest \
+    --set agent.zone=<YOUR_ZONE> \
+    --set agent.cluster=<YOUR_CLUSTER_NAME> \
+    instana/instana-agent
+  ```
+
+#### 4. **Kiểm tra cài đặt**
+Kiểm tra xem Instana Agent đã được triển khai thành công chưa:
+
+```bash
+oc get pods -n instana-agent
+```
+
+---
+
+### **Lưu ý**
+- Đảm bảo helper node có quyền truy cập đến tất cả các tài nguyên cần thiết.
+- Nếu bạn không có internal registry, bạn cần thiết lập một registry nội bộ (ví dụ: sử dụng Docker Registry hoặc Red Hat Quay).
+
+Nếu bạn gặp bất kỳ vấn đề nào, hãy tham khảo [tài liệu chính thức của Instana](https://www.instana.com/docs/) hoặc liên hệ với hỗ trợ kỹ thuật của họ.
