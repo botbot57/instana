@@ -80,3 +80,115 @@ oc get pods -n instana-agent
 - Nếu bạn không có internal registry, bạn cần thiết lập một registry nội bộ (ví dụ: sử dụng Docker Registry hoặc Red Hat Quay).
 
 Nếu bạn gặp bất kỳ vấn đề nào, hãy tham khảo [tài liệu chính thức của Instana](https://www.instana.com/docs/) hoặc liên hệ với hỗ trợ kỹ thuật của họ.
+
+
+
+
+Vì bạn đang cài đặt Instana Self-Hosted trên VM trong môi trường air-gapped, bạn có thể sử dụng Helm để triển khai Instana Agent trên OpenShift. Dưới đây là hướng dẫn chi tiết.
+
+1. Chuẩn bị Registry Cục Bộ
+Vì môi trường air-gapped, bạn cần một private container registry để lưu trữ Instana Agent image.
+
+Tải và đẩy image Instana Agent vào Registry nội bộ
+Tải image từ máy có internet
+
+sh
+Copy code
+docker pull icr.io/instana/agent
+Tag và đẩy image vào registry nội bộ
+
+sh
+Copy code
+docker tag icr.io/instana/agent <your-private-registry>/instana/agent
+docker push <your-private-registry>/instana/agent
+Kiểm tra registry
+
+sh
+Copy code
+oc image info <your-private-registry>/instana/agent
+2. Cài đặt Helm trên OpenShift
+Trên OpenShift 4.x, Helm có thể được sử dụng thông qua CLI. Nếu Helm chưa có trên máy quản trị, cài đặt bằng lệnh sau:
+
+sh
+Copy code
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+Kiểm tra phiên bản:
+
+sh
+Copy code
+helm version
+3. Cấu hình Instana Agent Helm Chart
+Thêm Helm Chart Instana vào môi trường Air-Gapped
+Trên máy có internet, tải về Helm Chart của Instana:
+
+sh
+Copy code
+helm repo add instana https://agents.instana.io/helm
+helm repo update
+helm pull instana/agent --untar
+tar -czf instana-agent-helm.tar.gz agent
+Sau đó, chuyển file này vào máy air-gapped, rồi giải nén:
+
+sh
+Copy code
+tar -xzf instana-agent-helm.tar.gz
+Cấu hình giá trị cho Instana Agent
+Tạo file values.yaml để chứa thông tin cấu hình:
+
+yaml
+Copy code
+agent:
+  zone: "openshift-cluster"
+  endpointHost: "<instana-backend-ip>"
+  endpointPort: 42699
+  agentKey: "<your-instana-agent-key>"
+  image:
+    repository: "<your-private-registry>/instana/agent"
+    pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: instana-registry
+4. Cài đặt Instana Agent trên OpenShift bằng Helm
+Tạo Namespace
+sh
+Copy code
+oc create namespace instana-agent
+Tạo Secret để truy cập Registry
+sh
+Copy code
+oc create secret docker-registry instana-registry \
+  --docker-server=<your-private-registry> \
+  --docker-username=<your-username> \
+  --docker-password=<your-password> \
+  --namespace=instana-agent
+Cài đặt Instana Agent bằng Helm
+sh
+Copy code
+helm install instana-agent ./agent -n instana-agent -f values.yaml
+5. Kiểm tra Trạng Thái Instana Agent
+Kiểm tra Pod đã chạy
+sh
+Copy code
+oc get pods -n instana-agent
+Xem logs để kiểm tra kết nối
+sh
+Copy code
+oc logs -l app=instana-agent -n instana-agent --tail=50
+Xác minh trên Instana UI
+Mở Instana UI > Infrastructure > Kubernetes
+Kiểm tra xem OpenShift Cluster có hiển thị không
+6. Tích hợp Prometheus Metrics (Tùy Chọn)
+Nếu OpenShift đang chạy Prometheus Operator, bạn có thể trích xuất metrics bằng cách chỉnh sửa values.yaml:
+
+yaml
+Copy code
+agent:
+  prometheus:
+    enabled: true
+    configMap: instana-prometheus-config
+Sau đó áp dụng lại Helm Chart:
+
+sh
+Copy code
+helm upgrade instana-agent ./agent -n instana-agent -f values.yaml
+
